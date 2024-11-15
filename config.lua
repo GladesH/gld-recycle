@@ -240,5 +240,5 @@ Config.DailyRecycling = {
     rewards = {
         { item = 'old_money', amount = 600 }
     },
-    requiredRecycles = 1
+    requiredRecycles = 75
 }
