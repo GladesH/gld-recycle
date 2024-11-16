@@ -19,17 +19,17 @@
       }
       
       .container {
-    width: 800px;
-    background-color: rgba(0, 0, 0, 0.85);
-    color: white;
-    border-radius: 15px;
-    padding: 20px;
-    position: absolute;
-    top: 50%;
-    left: calc(50% + 105px); /* 50% + la moitié de la largeur de la tooltip */
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-}
+          width: 800px;
+          background-color: rgba(0, 0, 0, 0.85);
+          color: white;
+          border-radius: 15px;
+          padding: 20px;
+          position: absolute;
+          top: 50%;
+          left: calc(50% + 105px);
+          transform: translate(-50%, -50%);
+          box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      }
 
       .header {
           display: flex;
@@ -226,21 +226,21 @@
       }
 
       .item-info {
-    position: absolute;
-    left: -210px;
-    top: 0;
-    background-color: rgba(0, 0, 0, 0.85);
-    padding: 15px;
-    border-radius: 15px;
-    width: 200px;
-    display: none;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    height: 100%;
-}
+          position: absolute;
+          left: -210px;
+          top: 0;
+          background-color: rgba(0, 0, 0, 0.85);
+          padding: 15px;
+          border-radius: 15px;
+          width: 200px;
+          display: none;
+          box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          height: 100%;
+      }
 
       .item-info h3 {
-          color: #ffffff60;
+          color: #2196F3;
           margin-bottom: 10px;
           font-size: 1.1em;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -288,7 +288,7 @@
 <body>
   <div class="container" id="recycling-menu" style="display: none;">
       <div class="item-info" id="itemInfo">
-          <h3>Ressources possible pour :</h3>
+          <h3>Récompenses possibles</h3>
           <div id="rewardsList"></div>
       </div>
 
@@ -328,7 +328,6 @@
               const progressPercentage = (event.data.xp / event.data.maxXP) * 100;
               document.getElementById('xp-progress').style.width = `${progressPercentage}%`;
               
-              console.log('Received items:', event.data.items);
               renderItems(event.data.items, event.data.maxItems);
           }
       });
@@ -350,36 +349,33 @@
       }
 
       function renderItems(items, maxItems) {
-    const container = document.getElementById('items-container');
-    container.innerHTML = '';
-    
-    items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'item';
+          const container = document.getElementById('items-container');
+          container.innerHTML = '';
+          
+          items.forEach(item => {
+              const div = document.createElement('div');
+              div.className = 'item';
 
-        div.onmouseover = function() {
-            const infoPanel = document.getElementById('itemInfo');
-            const rewardsList = document.getElementById('rewardsList');
-            
-            let rewardsHTML = `<h3>${item.label}</h3>`;
-            
-            if (item.rewards && Array.isArray(item.rewards)) {
-                item.rewards.forEach(reward => {
-                    // Ici nous devons utiliser QBCore.Shared.Items[reward.item].label
-                    // Mais comme nous n'avons pas accès à ces données côté NUI,
-                    // il faut les envoyer depuis le client.lua
-                    rewardsHTML += `
-                        <div class="reward-item">
-                            <span>${reward.label || reward.item}</span>
-                            <span>${reward.min} - ${reward.max}</span>
-                        </div>
-                    `;
-                });
-            }
-            
-            rewardsList.innerHTML = rewardsHTML;
-            infoPanel.style.display = 'block';
-        };
+              div.onmouseover = function() {
+                  const infoPanel = document.getElementById('itemInfo');
+                  const rewardsList = document.getElementById('rewardsList');
+                  
+                  let rewardsHTML = `<h3>${item.label}</h3>`;
+                  
+                  if (item.rewards && Array.isArray(item.rewards)) {
+                      item.rewards.forEach(reward => {
+                          rewardsHTML += `
+                              <div class="reward-item">
+                                  <span>${reward.item}</span>
+                                  <span>${reward.min} - ${reward.max}</span>
+                              </div>
+                          `;
+                      });
+                  }
+                  
+                  rewardsList.innerHTML = rewardsHTML;
+                  infoPanel.style.display = 'block';
+              };
 
               div.onmouseout = function() {
                   document.getElementById('itemInfo').style.display = 'none';
@@ -402,10 +398,12 @@
                               oninput="updateSliderValue('slider_${item.name}', 'value_${item.name}')">
                           <span class="slider-value" id="value_${item.name}">1</span>
                       </div>
-                      <button onclick="recycleItem('${item.name}', document.getElementById('slider_${item.name}').value)">
+                    
+                      <button onclick="recycleItem('${item.name}', document.getElementById('slider_${item.name}').value),closeMenu()">
                           <i class="fas fa-recycle"></i>
                           Recycler
                       </button>
+            
                   </div>
               `;
               container.appendChild(div);

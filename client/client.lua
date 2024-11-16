@@ -1,11 +1,8 @@
--- client/main.lua
-local QBCore = exports['qb-core']:GetCoreObject()
-local PlayerData = {}
 local currentLevel = 0
 local currentXP = 0
-local todayRecycles = 0
+local isProcessing = false
 
--- Création des points de recyclage
+-- Create recycling points
 CreateThread(function()
     for _, location in pairs(Config.Locations) do
         local model = GetHashKey(Config.RecyclingBin.model)
@@ -21,67 +18,55 @@ CreateThread(function()
     end
 end)
 
--- Target
+-- Target setup
 CreateThread(function()
-    if Config.target.framework.target == 'qb-target' then
+    if Config.Target == 'ox' then
+        exports.ox_target:addModel(Config.RecyclingBin.model, {
+            {
+                name = 'recycling_bin',
+                label = Config.RecyclingBin.label,
+                icon = 'fas fa-recycle',
+                onSelect = function()
+                    OpenRecyclingMenu()
+                end
+            }
+        })
+    else
         exports['qb-target']:AddTargetModel(Config.RecyclingBin.model, {
             options = {
                 {
                     type = "client",
-                    icon = 'fas fa-recycle',
+                    event = "gld-recycling:client:openMenu",
+                    icon = "fas fa-recycle",
                     label = Config.RecyclingBin.label,
-                    action = function()
-                        OpenRecyclingMenu()
-                    end
                 }
             },
-            distance = 2.5
+            distance = 2.5,
         })
-        elseif Config.target.framework.target == 'ox_target' then
-            exports.ox_target:addModel(Config.RecyclingBin.model, {
-                {
-                    name = 'recycling_bin',
-                    label = Config.RecyclingBin.label,
-                    icon = 'fas fa-recycle',
-                    onSelect = function()
-                        OpenRecyclingMenu()
-                    end
-                }
-            })
-        end
+    end
 end)
 
--- Effets de recyclage
+RegisterNetEvent('gld-recycling:client:openMenu', function()
+    OpenRecyclingMenu()
+end)
+
+-- Effects
 local function PlayRecycleEffect(entity)
     local coords = GetEntityCoords(entity)
     
-    -- Particules
     UseParticleFxAssetNextCall("core")
     local particle = StartParticleFxLoopedAtCoord("ent_amb_smoke_factory_white", 
         coords.x, coords.y, coords.z + 1.0,
         0.0, 0.0, 0.0, 
         1.0, false, false, false, false)
     
-    -- Son
     PlaySoundFromCoord(-1, "COLLECTION_SCORE", coords.x, coords.y, coords.z, "GTAO_Magnate_Boss_Modes_Soundset", false, 20, false)
     
-    Wait(Config.ProcessTime * 1000)
+    Wait(Config.ProcessTime)
     StopParticleFxLooped(particle, 0)
 end
 
--- Mini-jeu de recyclage
-local function StartRecyclingMinigame()
-    local success = exports['ps-ui']:Circle(function(success)
-        if success then
-            return true
-        else
-            return false
-        end
-    end, 2, 20)
-    return success
-end
-
--- Vérifier si le joueur est dans une zone spéciale
+-- Get zone bonus
 local function GetZoneBonus()
     local playerCoords = GetEntityCoords(PlayerPedId())
     local bonus = 1.0
@@ -90,6 +75,7 @@ local function GetZoneBonus()
         local distance = #(playerCoords - zone.coords)
         if distance <= zone.radius then
             bonus = zone.bonus
+            Notify('Zone spéciale! Bonus x' .. bonus)
             break
         end
     end
@@ -97,50 +83,33 @@ local function GetZoneBonus()
     return bonus
 end
 
--- Interface utilisateur
 function OpenRecyclingMenu()
-    local inventory = QBCore.Functions.GetPlayerData().items
-    local recyclableItems = {}
-    
-    for k, v in pairs(inventory) do
-        if Config.RecyclableItems[v.name] then
-            local rewards = Config.RecyclableItems[v.name].rewards
-            -- Ajout des labels pour chaque récompense
-            for _, reward in pairs(rewards) do
-                local item = QBCore.Shared.Items[reward.item]
-                reward.label = item and item.label or reward.item
-            end
-            
-            v.rewards = rewards
-            table.insert(recyclableItems, v)
-        end
-    end
+    if isProcessing then return end
 
+    local items = Framework.GetInventoryItems()
+    
     local menuData = {
         action = "openMenu",
-        items = recyclableItems,
+        items = items,
         level = currentLevel,
         xp = currentXP,
-        maxXP = Config.RecyclingLevels[currentLevel + 1] and Config.RecyclingLevels[currentLevel + 1].requireXP or 0,
-        maxItems = Config.RecyclingLevels[currentLevel].maxItems
+        maxXP = Config.Levels[currentLevel + 1] and Config.Levels[currentLevel + 1].requireXP or 0,
+        maxItems = Config.Levels[currentLevel] and Config.Levels[currentLevel].maxItems or 5
     }
 
     SetNuiFocus(true, true)
     SendNUIMessage(menuData)
 end
 
--- Traitement du recyclage
-RegisterNetEvent('qb-recycling:client:processItem', function(itemName, amount)
-    if not Config.RecyclableItems[itemName] then return end
- 
-    -- Vérifier les limites de niveau
-    local maxItems = Config.RecyclingLevels[currentLevel] and Config.RecyclingLevels[currentLevel].maxItems or 5
-    if amount > maxItems then
-        QBCore.Functions.Notify('Vous ne pouvez pas recycler autant d\'items à votre niveau actuel', 'error')
-        return
-    end
- 
-    -- Trouver le recycleur le plus proche
+-- Process recycling
+RegisterNUICallback('recycleItem', function(data, cb)
+    if isProcessing then return end
+    isProcessing = true
+
+    local itemName = data.item
+    local amount = tonumber(data.amount)
+
+    -- Get closest bin
     local playerCoords = GetEntityCoords(PlayerPedId())
     local closestBin = nil
     local closestDistance = 1000
@@ -154,42 +123,56 @@ RegisterNetEvent('qb-recycling:client:processItem', function(itemName, amount)
             end
         end
     end
- 
-    QBCore.Functions.Progressbar("recycling_item", "Recyclage en cours...", 
-        Config.ProcessTime * 1000, 
-        false, true, {
-            disableMovement = true,
-            disableCarMovement = true,
-            disableMouse = false,
-            disableCombat = true,
-        }, {
-            animDict = "mini@repair",
-            anim = "fixing_a_ped",
-            flags = 49,
-        }, {}, {}, function() -- Done
+
+    TaskStartScenarioInPlace(PlayerPedId(), "PROP_HUMAN_BUM_BIN", 0, true)
+
+    if lib then
+        if lib.progressBar({
+            duration = Config.ProcessTime,
+            label = 'Recyclage en cours...',
+            useWhileDead = false,
+            canCancel = true,
+            disable = {
+                car = true,
+                move = true,
+                combat = true
+            }
+        }) then
             if closestBin then
                 PlayRecycleEffect(closestBin)
             end
-            TriggerServerEvent('qb-recycling:server:processItem', itemName, amount)
+            
+            local zoneBonus = GetZoneBonus()
+            TriggerServerEvent('gld-recycling:server:processItem', itemName, amount, zoneBonus)
             Wait(500)
             OpenRecyclingMenu()
-    end)
- end)
+        end
+    else
+        if Config.Framework == 'ESX' then
+            Framework.object.ShowProgress(Config.ProcessTime, 'Recyclage en cours...')
+        else
+            QBCore.Functions.Progressbar("recycling", 'Recyclage en cours...', Config.ProcessTime, false, true, {
+                disableMovement = true,
+                disableCarMovement = true,
+                disableMouse = false,
+                disableCombat = true,
+            })
+        end
+        
+        Wait(Config.ProcessTime)
+        if closestBin then
+            PlayRecycleEffect(closestBin)
+        end
+        
+        local zoneBonus = GetZoneBonus()
+        TriggerServerEvent('gld-recycling:server:processItem', itemName, amount, zoneBonus)
+        Wait(500)
+        OpenRecyclingMenu()
+    end
 
--- Événements pour la progression
-RegisterNetEvent('qb-recycling:client:updateProgress', function(level, xp)
-    currentLevel = level
-    currentXP = xp
-end)
-
-RegisterNetEvent('qb-recycling:client:updateDailyProgress', function(recycles)
-    todayRecycles = recycles
-end)
-
--- Callbacks NUI
-RegisterNUICallback('recycleItem', function(data, cb)
-    TriggerEvent('qb-recycling:client:processItem', data.item, data.amount)
-    cb('ok')
+    ClearPedTasks(PlayerPedId())
+    isProcessing = false
+    if cb then cb('ok') end
 end)
 
 RegisterNUICallback('closeMenu', function(_, cb)
@@ -197,17 +180,21 @@ RegisterNUICallback('closeMenu', function(_, cb)
     cb('ok')
 end)
 
--- Initialisation du joueur
-RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
-    TriggerServerEvent('qb-recycling:server:getPlayerProgress')
+-- Progress events
+RegisterNetEvent('gld-recycling:client:updateProgress', function(level, xp)
+    currentLevel = level
+    currentXP = xp
 end)
 
--- Commande admin pour ajouter un recycleur
-RegisterCommand('addrecycler', function()
-    if QBCore.Functions.GetPlayerData().group == 'admin' then
-        local coords = GetEntityCoords(PlayerPedId())
-        local heading = GetEntityHeading(PlayerPedId())
-        print(string.format("coords = vector3(%s, %s, %s),", coords.x, coords.y, coords.z))
-        print(string.format("heading = %s", heading))
-    end
-end)
+-- Framework loaded event
+if Config.Framework == 'ESX' then
+    RegisterNetEvent('esx:playerLoaded', function()
+        TriggerServerEvent('gld-recycling:server:getPlayerProgress')
+    end)
+else
+    RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+        TriggerServerEvent('gld-recycling:server:getPlayerProgress')
+    end)
+end
+
+-- Escape key handling
