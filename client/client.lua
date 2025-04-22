@@ -50,6 +50,15 @@ RegisterNetEvent('gld-recycling:client:openMenu', function()
     OpenRecyclingMenu()
 end)
 
+-- Function to notify player
+function Notify(message, type)
+    if Config.Framework == 'ESX' then
+        ESX.ShowNotification(message)
+    else
+        QBCore.Functions.Notify(message, type)
+    end
+end
+
 -- Effects
 local function PlayRecycleEffect(entity)
     local coords = GetEntityCoords(entity)
@@ -88,6 +97,12 @@ function OpenRecyclingMenu()
 
     local items = Framework.GetInventoryItems()
     
+    -- Ensure items is a valid table
+    if not items or type(items) ~= "table" then
+        Notify("Aucun objet recyclable dans votre inventaire.", "error")
+        return
+    end
+    
     local menuData = {
         action = "openMenu",
         items = items,
@@ -103,11 +118,28 @@ end
 
 -- Process recycling
 RegisterNUICallback('recycleItem', function(data, cb)
-    if isProcessing then return end
+    local function handleError(err)
+        print("Error in recycleItem: ", err)
+        ClearPedTasks(PlayerPedId())
+        isProcessing = false
+        if cb then cb('error') end
+    end
+
+    -- Guard clauses
+    if isProcessing then 
+        if cb then cb('already_processing') end
+        return
+    end
+    
+    if not data or not data.item or not data.amount then
+        handleError("Invalid data received")
+        return
+    end
+
     isProcessing = true
 
     local itemName = data.item
-    local amount = tonumber(data.amount)
+    local amount = tonumber(data.amount) or 1
 
     -- Get closest bin
     local playerCoords = GetEntityCoords(PlayerPedId())
@@ -149,7 +181,7 @@ RegisterNUICallback('recycleItem', function(data, cb)
         end
     else
         if Config.Framework == 'ESX' then
-            Framework.object.ShowProgress(Config.ProcessTime, 'Recyclage en cours...')
+            ESX.ShowProgress(Config.ProcessTime, 'Recyclage en cours...')
         else
             QBCore.Functions.Progressbar("recycling", 'Recyclage en cours...', Config.ProcessTime, false, true, {
                 disableMovement = true,
@@ -198,3 +230,6 @@ else
 end
 
 -- Escape key handling
+RegisterCommand('closemenu', function()
+    SetNuiFocus(false, false)
+end)
