@@ -1,4 +1,3 @@
--- bridge/bridge.lua
 Framework = {}
 
 -- Initialisation du Framework
